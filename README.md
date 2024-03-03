@@ -1,4 +1,6 @@
 forked from https://github.com/coder/coder/tree/main/examples/templates/docker
+trying to update Docker to spin up Airflow together with Coder platform, faced the error below.
+tf is the same as in the source, updated only Docker file
 
 error:
 ```Terraform 1.4.6
