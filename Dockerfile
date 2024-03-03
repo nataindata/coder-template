@@ -2,13 +2,16 @@
 FROM python:3.8-slim-buster
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update \
+    && apt-get install -y \
     curl \
     git \
+    golang \
     sudo \
     vim \
     wget \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Install Apache Airflow (specify the version you want)
 # Use the constraint to avoid installing unnecessary providers
