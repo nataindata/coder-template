@@ -22,15 +22,48 @@ provider "docker" {
 data "coder_workspace" "me" {
 }
 
+data "coder_parameter" "airflow_password" {
+  name = "airflow_password"
+  display_name = "Airflow Password"
+  description = "Enter the Airflow password to set"
+  default = "changeme"
+  mutable = false
+  type = "string"  
+}
+
+
 resource "coder_agent" "main" {
-  arch           = data.coder_provisioner.me.arch
-  os             = "linux"
-  startup_script = <<-EOT
+  os                     = "linux"
+  arch                   = "amd64"
+  startup_script         = <<-EOT
     set -e
 
     # install and start code-server
-    curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/tmp/code-server --version 4.19.1
+    curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/tmp/code-server --version 4.11.0
     /tmp/code-server/bin/code-server --auth none --port 13337 >/tmp/code-server.log 2>&1 &
+
+    PATH=$PATH:~/.local/bin
+    pip install apache-airflow apache-airflow-providers-google pandas tweepy
+
+    
+    # If db doesn't exist or has size 0, do an init
+    filename=~/airflow/airflow.db
+    if ! [ -f $filename ] || ! [ -s $filename ]
+    then
+      airflow db init
+    fi
+
+    export AIRFLOW__CORE__LOAD_EXAMPLES=false
+    export AIRFLOW__CORE__TEST_CONNECTION=Enabled
+
+    airflow webserver >/tmp/airflow.log 2>&1 & 
+
+    airflow scheduler >> /tmp/airflow_scheduler.log 2>&1 &
+
+    # it is fine to run this command on each startup, if the user exists
+    # "airflow users" simply says the user is in the db and exits 0
+    airflow users create -u admin -p ${data.coder_parameter.airflow_password.value} -r Admin -e admin@admin.com -f Coder -l User 
+
   EOT
 
   # These environment variables allow you to make Git commits right away after creating a
@@ -111,19 +144,36 @@ resource "coder_agent" "main" {
   }
 }
 
+# code-server
 resource "coder_app" "code-server" {
   agent_id     = coder_agent.main.id
   slug         = "code-server"
   display_name = "code-server"
-  url          = "http://localhost:13337/?folder=/home/${local.username}"
   icon         = "/icon/code.svg"
+  url          = "http://localhost:13337?folder=/home/coder"
   subdomain    = false
   share        = "owner"
 
   healthcheck {
     url       = "http://localhost:13337/healthz"
-    interval  = 5
-    threshold = 6
+    interval  = 3
+    threshold = 10
+  }
+}
+
+resource "coder_app" "airflow" {
+  agent_id     = coder_agent.main.id
+  slug         = "airflow"
+  display_name = "airflow"
+  icon         = "/icon/code.svg"
+  url          = "http://localhost:8080"
+  subdomain    = true
+  share        = "owner"
+
+  healthcheck {
+    url       = "http://localhost:8080"
+    interval  = 3
+    threshold = 10
   }
 }
 
